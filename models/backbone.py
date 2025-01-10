@@ -88,7 +88,8 @@ class BackboneBase(nn.Module):
         for name, x in xs.items():
             m = tensor_list.mask
             assert m is not None
-            mask = F.interpolate(m[None].float(), size=x.shape[-2:]).to(torch.bool)[0]
+            mask_data = m[None].float()
+            mask = F.interpolate(mask_data, size=x.shape[-2:]).to(torch.bool)[0]
             out[name] = NestedTensor(x, mask)
         return out
 
@@ -116,15 +117,19 @@ class Joiner(nn.Sequential):
         self.num_channels = backbone.num_channels
 
     def forward(self, tensor_list: NestedTensor):
-        xs = self[0](tensor_list)
+        # apply backbone
+        backbone = self[0]
+        xs = backbone(tensor_list)
         out: List[NestedTensor] = []
         pos = []
         for name, x in sorted(xs.items()):
             out.append(x)
 
         # position encoding
+        position_encoding = self[1]
         for x in out:
-            pos.append(self[1](x).to(x.tensors.dtype))
+            # apply position embedding
+            pos.append(position_encoding(x).to(x.tensors.dtype))
 
         return out, pos
 
