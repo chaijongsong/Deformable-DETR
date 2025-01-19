@@ -57,6 +57,8 @@ class DeformableDETR(nn.Module):
 
         if not two_stage:
             self.query_embed = nn.Embedding(num_queries, hidden_dim*2)
+            # self.query_embed = nn.Parameter(torch.randn(self.num_queries, hidden_dim*2))
+
         if num_feature_levels > 1:
             num_backbone_outs = len(backbone.strides)
             input_proj_list = []
@@ -90,8 +92,9 @@ class DeformableDETR(nn.Module):
         nn.init.constant_(self.bbox_embed.layers[-1].weight.data, 0)
         nn.init.constant_(self.bbox_embed.layers[-1].bias.data, 0)
         for proj in self.input_proj:
-            nn.init.xavier_uniform_(proj[0].weight, gain=1)
-            nn.init.constant_(proj[0].bias, 0)
+            conv2d = proj[0]
+            nn.init.xavier_uniform_(conv2d.weight, gain=1)
+            nn.init.constant_(conv2d.bias, 0)
 
         # if two-stage, the last class_embed and bbox_embed is for region proposal generation
         num_pred = (transformer.decoder.num_layers + 1) if two_stage else transformer.decoder.num_layers
@@ -155,6 +158,7 @@ class DeformableDETR(nn.Module):
         query_embeds = None
         if not self.two_stage:
             query_embeds = self.query_embed.weight
+
         hs, init_reference, inter_references, enc_outputs_class, enc_outputs_coord_unact = self.transformer(srcs, masks, pos, query_embeds)
 
         outputs_classes = []

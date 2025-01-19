@@ -137,9 +137,9 @@ class DeformableTransformer(nn.Module):
             spatial_shapes.append(spatial_shape)
             src = src.flatten(2).transpose(1, 2)
             mask = mask.flatten(1)
-            pos_embed = pos_embed.flatten(2).transpose(1, 2)
+            lvl_pos = pos_embed.flatten(2).transpose(1, 2)
             lvl_embed = self.level_embed[lvl].view(1, 1, -1)
-            lvl_pos_embed = pos_embed + lvl_embed
+            lvl_pos_embed = lvl_pos + lvl_embed
             lvl_pos_embed_flatten.append(lvl_pos_embed)
             src_flatten.append(src)
             mask_flatten.append(mask)
@@ -266,13 +266,13 @@ class DeformableTransformerDecoderLayer(nn.Module):
                  n_levels=4, n_heads=8, n_points=4):
         super().__init__()
 
-        # cross attention
-        self.cross_attn = MSDeformAttn(d_model, n_levels, n_heads, n_points)
+        # self attention
+        self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
         self.dropout1 = nn.Dropout(dropout)
         self.norm1 = nn.LayerNorm(d_model)
 
-        # self attention
-        self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout)
+        # cross attention
+        self.cross_attn = MSDeformAttn(d_model, n_levels, n_heads, n_points)
         self.dropout2 = nn.Dropout(dropout)
         self.norm2 = nn.LayerNorm(d_model)
 
@@ -298,15 +298,15 @@ class DeformableTransformerDecoderLayer(nn.Module):
         # self attention
         q = k = self.with_pos_embed(tgt, query_pos)
         tgt2 = self.self_attn(q.transpose(0, 1), k.transpose(0, 1), tgt.transpose(0, 1))[0].transpose(0, 1)
-        tgt = tgt + self.dropout2(tgt2)
-        tgt = self.norm2(tgt)
+        tgt = tgt + self.dropout1(tgt2)
+        tgt = self.norm1(tgt)
 
         # cross attention
         tgt2 = self.cross_attn(self.with_pos_embed(tgt, query_pos),
                                reference_points,
                                src, src_spatial_shapes, level_start_index, src_padding_mask)
-        tgt = tgt + self.dropout1(tgt2)
-        tgt = self.norm1(tgt)
+        tgt = tgt + self.dropout2(tgt2)
+        tgt = self.norm2(tgt)
 
         # ffn
         tgt = self.forward_ffn(tgt)
@@ -337,6 +337,7 @@ class DeformableTransformerDecoder(nn.Module):
             else:
                 assert reference_points.shape[-1] == 2
                 reference_points_input = reference_points[:, :, None] * src_valid_ratios[:, None]
+
             output = layer(output, query_pos, reference_points_input, src, src_spatial_shapes, src_level_start_index, src_padding_mask)
 
             # hack implementation for iterative bounding box refinement
